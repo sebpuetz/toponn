@@ -63,7 +63,7 @@ fn main() {
         .embeddings
         .load_embeddings()
         .or_exit("Cannot load embeddings", 1);
-    let vectorizer = SentVectorizer::new(embeddings);
+    let vectorizer = SentVectorizer::new(embeddings, labels.clone());
 
     let graph_reader = File::open(&config.model.graph).or_exit(
         format!(

@@ -76,7 +76,7 @@ fn train_model(
         .embeddings
         .load_embeddings()
         .or_exit("Cannot load embeddings", 1);
-    let vectorizer = SentVectorizer::new(embeddings);
+    let vectorizer = SentVectorizer::new(embeddings, labels.clone());
 
     let graph_read = BufReader::new(File::open(&config.model.graph)?);
     let mut tagger = Tagger::load_graph(graph_read, vectorizer, labels, &config.model)?;
@@ -187,7 +187,7 @@ where
         .embeddings
         .load_embeddings()
         .or_exit("Cannot load embeddings", 1);
-    let vectorizer = SentVectorizer::new(embeddings);
+    let vectorizer = SentVectorizer::new(embeddings, labels.clone());
 
     let input_file = File::open(path.as_ref()).or_exit(
         format!(

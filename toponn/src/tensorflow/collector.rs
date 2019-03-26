@@ -133,7 +133,7 @@ impl Collector for TensorCollector {
             labels.push(self.numberer.add(tf.to_owned()) as i32);
         }
 
-        let (tokens, tags) = input.into_parts();
+        let (tokens, tags, tfs) = input.into_parts();
         self.cur_tokens.push(tokens);
         self.cur_tags.push(tags);
         self.cur_labels.push(labels);

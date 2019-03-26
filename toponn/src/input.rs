@@ -1,12 +1,14 @@
 use conllx::Token;
 use failure::{format_err, Error};
-use ndarray::Array1;
 use finalfusion::{
     embeddings::Embeddings as FiFuEmbeddings,
     storage::StorageWrap,
     storage::{CowArray, CowArray1},
     vocab::VocabWrap,
 };
+use ndarray::Array1;
+
+use crate::Numberer;
 
 pub struct Embeddings {
     embeddings: FiFuEmbeddings<VocabWrap, StorageWrap>,
@@ -51,10 +53,10 @@ impl From<FiFuEmbeddings<VocabWrap, StorageWrap>> for Embeddings {
 /// This data type represents a sentence as vectors (`Vec`) of tokens and
 /// part-of-speech embeddings. Such a vector is typically the input to a
 /// sequence labeling graph.
-#[derive(Default)]
 pub struct SentVec {
     pub tokens: Vec<f32>,
     pub tags: Vec<f32>,
+    pub tfs: Vec<i32>,
 }
 
 impl SentVec {
@@ -63,6 +65,7 @@ impl SentVec {
         SentVec {
             tokens: Vec::new(),
             tags: Vec::new(),
+            tfs: Vec::new(),
         }
     }
 
@@ -71,13 +74,14 @@ impl SentVec {
         SentVec {
             tokens: Vec::with_capacity(capacity),
             tags: Vec::with_capacity(capacity),
+            tfs: Vec::with_capacity(capacity),
         }
     }
 
     /// Decompose the sentence vector into vectors of token and
     /// part-of-speech tag embeddings.
-    pub fn into_parts(self) -> (Vec<f32>, Vec<f32>) {
-        (self.tokens, self.tags)
+    pub fn into_parts(self) -> (Vec<f32>, Vec<f32>, Vec<i32>) {
+        (self.tokens, self.tags, self.tfs)
     }
 }
 
@@ -116,6 +120,7 @@ impl LayerEmbeddings {
 /// their indices in embedding matrices.
 pub struct SentVectorizer {
     layer_embeddings: LayerEmbeddings,
+    numberer: Numberer<String>,
 }
 
 impl SentVectorizer {
@@ -124,13 +129,21 @@ impl SentVectorizer {
     /// The vectorizer is constructed from the embedding matrices. The layer
     /// embeddings are used to find the indices into the embedding matrix for
     /// layer values.
-    pub fn new(layer_embeddings: LayerEmbeddings) -> Self {
-        SentVectorizer { layer_embeddings }
+    pub fn new(layer_embeddings: LayerEmbeddings, numberer: Numberer<String>) -> Self {
+        SentVectorizer {
+            layer_embeddings,
+            numberer,
+        }
     }
 
     /// Get the layer embeddings.
     pub fn layer_embeddings(&self) -> &LayerEmbeddings {
         &self.layer_embeddings
+    }
+
+    /// Get the topological field numberer.
+    pub fn numberer(&self) -> &Numberer<String> {
+        &self.numberer
     }
 
     /// Vectorize a sentence.
@@ -139,7 +152,25 @@ impl SentVectorizer {
 
         for token in sentence {
             let form = token.form();
-            let pos = token.pos().ok_or_else(|| format_err!("{}", token))?;
+            let pos = token.pos().ok_or(format_err!("{}", token))?;
+            let tf = token
+                .features()
+                .ok_or_else(|| {
+                    format_err!(
+                        "No features field with a topological field (tf) feature: {}",
+                        token
+                    )
+                })?
+                .as_map()
+                .get("tf")
+                .ok_or_else(|| {
+                    format_err!(
+                        "No features field with a topological field (tf) feature: {}",
+                        token
+                    )
+                })?
+                .as_ref()
+                .unwrap();
 
             input.tokens.extend_from_slice(
                 &self
@@ -160,6 +191,8 @@ impl SentVectorizer {
                     .as_slice()
                     .expect("Non-contiguous embedding"),
             );
+
+            input.tfs.push(self.numberer.number(tf).unwrap() as i32);
         }
 
         Ok(input)
